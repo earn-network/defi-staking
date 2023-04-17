@@ -1,0 +1,31 @@
+{
+  "name": "hardhat-ts-starter",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx hardhat test",
+    "compile": "npx hardhat compile",
+    "mainnet": "npx hardhat deploy --network bsc",
+    "devdoc": "npx hardhat docgen && npx hardhat export --export-all dev-docs/contracts.json",
+    "doc": "npx hardhat dodoc",
+    "testnet": "npx hardhat deploy --network bscTestnet",
+    "node": "npx hardhat node",
+    "clean": "npx hardhat clean",
+    "verify": "npx hardhat --network bsc etherscan-verify"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^2.0.0",
+    "hardhat": "^2.12.3",
+    "hardhat-deploy": "^0.11.22"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.8.0",
+    "@primitivefi/hardhat-dodoc": "^0.2.3",
+    "dotenv": "^16.0.3",
+    "hardhat-docgen": "^1.3.0"
+  }
+}

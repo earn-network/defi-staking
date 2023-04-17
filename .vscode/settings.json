@@ -1,0 +1,21 @@
+{
+    "slither.solcPath": "",
+    "slither.hiddenDetectors": [],
+    "cSpell.words": [
+        "BSCSCAN",
+        "BSCTESTNET",
+        "coindev",
+        "devdoc",
+        "docgen",
+        "dodoc",
+        "ethersproject",
+        "nomicfoundation",
+        "nomiclabs",
+        "primitivefi",
+        "remixd",
+        "sepolia",
+        "staker",
+        "stakers",
+        "typechain"
+    ]
+}
