@@ -7,4 +7,6 @@ interface IMYCStakingFactory {
     function signer() external view returns (address);
 
     function mycStakingManager() external view returns (address);
+
+    function owner() external view returns (address);
 }

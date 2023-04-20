@@ -2,9 +2,8 @@
 pragma solidity ^0.8.7;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./IMYCStakingManager.sol";
 
-contract MYCStakingManager is IMYCStakingManager, Ownable {
+contract MYCStakingManager is Ownable {
     /**
      * @dev Emitted when `owner` changes status to `status` for `factory` address
      */
