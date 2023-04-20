@@ -4,13 +4,12 @@ pragma solidity ^0.8.7;
 import "./LockedStaking.sol";
 import "@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "../IMYCStakingManager.sol";
 import "../IMYCStakingFactory.sol";
 
 /// @title Locked Staking Factory
 /// @notice Creates new LockedStaking Contracts
-contract LockedStakingFactory is Ownable, EIP712, IMYCStakingFactory {
+contract LockedStakingFactory is EIP712, IMYCStakingFactory {
     /**
      * @dev Emitted when withdawing MYC `reward` fees for `poolAddress`
      */
@@ -60,6 +59,13 @@ contract LockedStakingFactory is Ownable, EIP712, IMYCStakingFactory {
      */
     function treasury() external view returns (address) {
         return _mycStakingManager.treasury();
+    }
+
+    /**
+     * @dev Returns main owner address
+     */
+    function owner() external view returns (address) {
+        return _mycStakingManager.owner();
     }
 
     /**

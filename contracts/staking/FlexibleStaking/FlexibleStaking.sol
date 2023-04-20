@@ -2,10 +2,11 @@
 pragma solidity ^0.8.15;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "./../IMYCStakingFactory.sol";
+import "./../IMYCStakingPool.sol";
 
 /// @title Flexible Staking Contract
-contract FlexibleStaking is Ownable {
+contract FlexibleStaking is IMYCStakingPool {
     IERC20 private stakeToken;
 
     uint256 private rewardTokensPerSecond;
@@ -19,6 +20,7 @@ contract FlexibleStaking is Ownable {
     uint256 private constant REWARDS_PRECISION = 1e12;
 
     address public immutable creator;
+    address public immutable factory;
 
     struct Staker {
         uint256 amount;
@@ -60,6 +62,7 @@ contract FlexibleStaking is Ownable {
             (_endTimestamp - _startTimestamp) *
             rewardTokensPerSecond;
         creator = _creator;
+        factory = msg.sender;
     }
 
     /**
@@ -227,5 +230,16 @@ contract FlexibleStaking is Ownable {
             endTimestamp,
             address(stakeToken)
         );
+    }
+
+    /**
+     * @notice Used to withdraw the amount of tokens from contract to protocol owner address. Unsafe function, please, use only with emergency
+     * @param _tokenAddress Token address
+     * @param _amount Amount to withdraw
+     */
+    function emergencyWithdraw(address _tokenAddress, uint256 _amount) external {
+        address owner = IMYCStakingFactory(factory).owner();
+        require(msg.sender == owner, "Only protocol owner");
+        IERC20(_tokenAddress).transfer(owner, _amount);
     }
 }

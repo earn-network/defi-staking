@@ -410,4 +410,15 @@ contract LockedStaking is IMYCStakingPool {
         sc.mycFeesWithdrawn += toWithdraw;
         return (toWithdraw);
     }
+    
+    /**
+     * @notice Used to withdraw the amount of tokens from contract to protocol owner address. Unsafe function, please, use only with emergency
+     * @param _tokenAddress Token address
+     * @param _amount Amount to withdraw
+     */
+    function emergencyWithdraw(address _tokenAddress, uint256 _amount) external {
+        address owner = _factory.owner();
+        require(msg.sender == owner, "Only protocol owner");
+        IERC20(_tokenAddress).transfer(owner, _amount);
+    }
 }
