@@ -39,7 +39,7 @@ const config: HardhatUserConfig = {
           : "",
       },
       saveDeployments: false,
-      deploy: ["deploy/eth/"],
+      deploy: ["deploy/bsc/"],
       tags: ["testnet"],
     },
     bscTestnet: {
@@ -50,7 +50,7 @@ const config: HardhatUserConfig = {
           : "",
       },
       saveDeployments: true,
-      deploy: ["deploy/eth/"],
+      deploy: ["deploy/bsc/"],
       tags: ["testnet"],
     },
     sepolia: {
@@ -61,8 +61,19 @@ const config: HardhatUserConfig = {
           : "",
       },
       saveDeployments: true,
-      deploy: ["deploy/eth/"],
+      deploy: ["deploy/bsc/"],
       tags: ["testnet"],
+    },
+    bsc: {
+      url: process.env.BSC_URL || "",
+      chainId: 56,
+      accounts: {
+        mnemonic: process.env.MNEMONIC_MAINNET
+          ? process.env.MNEMONIC_MAINNET
+          : "",
+      },
+      saveDeployments: true,
+      deploy: ["deploy/bsc/"],
     },
     mainnet: {
       url: process.env.MAINNET_URL || "",
@@ -73,7 +84,7 @@ const config: HardhatUserConfig = {
           : "",
       },
       saveDeployments: true,
-      deploy: ["deploy/eth/"],
+      deploy: ["deploy/bsc/"],
     },
   },
   gasReporter: {
@@ -85,7 +96,10 @@ const config: HardhatUserConfig = {
   },
   etherscan: {
     apiKey: {
-      mainnet: process.env.BSCSCAN_API_KEY || "",
+      bscTestnet: process.env.BSCSCAN_API_KEY || "",
+      bsc: process.env.BSCSCAN_API_KEY || "",
+      mainnet: process.env.ETHERSCAN_API_KEY || "",
+      sepolia: process.env.ETHERSCAN_API_KEY || "",
     },
   },
   verify: {
