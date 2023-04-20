@@ -22,7 +22,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   await deploy("MYCStakingManager", {
     from: deployer,
-    args: [treasury, signer, mainOwner],
+    args: [treasury, signer],
     log: true,
   });
 };
