@@ -46,6 +46,11 @@ describe("FlexibleStakingPool", function () {
       expect(await flexibleStaking.checkRewards(bob.address)).eq(0);
     });
 
+    it("Should return proper factory address", async function () {
+      const { flexibleStaking, flexibleStakingFactory } = await loadFixture(flexibleStakingFixture);
+      expect(await flexibleStaking.factory()).eq(flexibleStakingFactory.address);
+    });
+
     it("Should return proper summary", async function () {
       const { flexibleStaking } = await loadFixture(flexibleStakingFixture);
       const [
@@ -355,6 +360,21 @@ describe("FlexibleStakingPool", function () {
           bob.address,
           ethers.utils.parseEther("5")
         );
+    });
+  });
+
+  describe("Emergency Withdraw", function () {
+    async function staked200TokensFixture2() {
+      const ts = await time.latest();
+      return staked200TokensFixture(ts);
+    }
+
+    it("Should withdraw tokens to protocol owner", async function () {
+      const { flexibleStaking, erc20Mock } =
+        await loadFixture(staked200TokensFixture2);
+      await expect(
+        flexibleStaking.connect(deployer).emergencyWithdraw(erc20Mock.address,ethers.utils.parseEther("100"))
+      ).to.emit(erc20Mock, "Transfer").withArgs(flexibleStaking.address, deployer.address, ethers.utils.parseEther("100"));
     });
   });
 });

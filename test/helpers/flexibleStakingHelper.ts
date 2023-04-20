@@ -259,8 +259,8 @@ export async function getNewPool(
   const receipt = await tz.wait();
   const result = mycStakingManager.interface.decodeEventLog(
     "AddedStakingPool",
-    receipt.logs[5].data,
-    receipt.logs[5].topics
+    receipt.logs[4].data,
+    receipt.logs[4].topics
   );
   const FlexibleStakingF = await ethers.getContractFactory("FlexibleStaking");
   const flexibleStaking = FlexibleStakingF.attach(result.poolAddress);

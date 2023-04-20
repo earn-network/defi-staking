@@ -578,4 +578,19 @@ describe("LockedStakingPool", function () {
       return staked200TokensFixture(timestampStart);
     }
   });
+
+  describe("Emergency Withdraw", function () {
+    async function staked200TokensFixture2() {
+      const timestampStart = (await time.latest()) - 21;
+      return staked200TokensFixture(timestampStart);
+    }
+
+    it("Should withdraw tokens to protocol owner", async function () {
+      const { lockedStaking, erc20Mock } =
+        await loadFixture(staked200TokensFixture2);
+      await expect(
+        lockedStaking.connect(deployer).emergencyWithdraw(erc20Mock.address,ethers.utils.parseEther("100"))
+      ).to.emit(erc20Mock, "Transfer").withArgs(lockedStaking.address, deployer.address, ethers.utils.parseEther("100"));
+    });
+  });
 });
