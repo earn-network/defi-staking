@@ -2,11 +2,15 @@
 pragma solidity ^0.8.15;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./../IMYCStakingFactory.sol";
 import "./../IMYCStakingPool.sol";
+import "../../helpers/Mocks/IWETH.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /// @title Flexible Staking Contract
-contract FlexibleStaking is IMYCStakingPool {
+contract FlexibleStaking is IMYCStakingPool, ReentrancyGuard {
+    using SafeERC20 for IERC20;
     IERC20 private stakeToken;
 
     uint256 private rewardTokensPerSecond;
@@ -25,7 +29,7 @@ contract FlexibleStaking is IMYCStakingPool {
     struct Staker {
         uint256 amount;
         uint256 rewardDebt;
-        uint256 pendingRewards;
+        uint256 pendingRewards; //needed for old versions support
         uint256 timestamp;
     }
 
@@ -65,17 +69,39 @@ contract FlexibleStaking is IMYCStakingPool {
         factory = msg.sender;
     }
 
+    function _withdrawTokensFromContract(address to, uint256 amount) internal {
+        address wethAddress = IMYCStakingFactory(factory).WETH();
+        if(wethAddress == address(stakeToken)){
+            IWETH(wethAddress).withdraw(amount);
+            payable(to).transfer(amount);
+        }
+        else{
+            stakeToken.safeTransfer(to, amount);
+        }
+    }
+
+    function _depositTokensToContract(uint256 amount) internal {
+        address wethAddress = IMYCStakingFactory(factory).WETH();
+        if(wethAddress == address(stakeToken)){
+            require(amount == msg.value, "Native currency mismatch");
+            IWETH(wethAddress).deposit{value: amount}();
+        }
+        else{
+            stakeToken.safeTransferFrom(msg.sender, address(this), amount);
+        }
+    }
+
     /**
      * @notice Extends staking end time
      * Only creator. Requires token spend allowance.
      * @param _newEndDate New end date of staking
      */
-    function extendStakingTime(uint256 _newEndDate) external {
+    function extendStakingTime(uint256 _newEndDate) payable external {
         require(msg.sender == creator, "creator mismatch");
         require(_newEndDate > endTimestamp, "timesstamp err");
         uint256 tokenAmount = (_newEndDate - endTimestamp) *
             rewardTokensPerSecond;
-        stakeToken.transferFrom(msg.sender, address(this), tokenAmount);
+        _depositTokensToContract(tokenAmount);
         endTimestamp = _newEndDate;
     }
 
@@ -83,25 +109,21 @@ contract FlexibleStaking is IMYCStakingPool {
      * @notice Allows anyone to deposit into the contract
      * @param _amount The amount to deposit to the contract
      */
-    function deposit(uint256 _amount) external {
+    function deposit(uint256 _amount) external payable nonReentrant {
         require(_amount > 0, "amount cannot be zero");
         require(endTimestamp > block.timestamp, "only before end date");
         require(startTimestamp < block.timestamp, "only after start date");
         Staker storage staker = stakers[msg.sender];
-        //1. Update accRewardPerShare
-        updateAccRewardPerShare();
-        //2. Update user rewards
-        uint256 userRewards = ((staker.amount * accRewardPerShare) /
-            REWARDS_PRECISION) - staker.rewardDebt;
-        staker.pendingRewards += userRewards;
-        //3. Update user balance
+        //1. Update accRewardPerShare and claim reward
+        _claimRewards();
+        //2. Update user balance
         staker.amount += _amount;
-        //4. Update rewardDebt
+        //3. Update rewardDebt
         staker.rewardDebt =
             (staker.amount * accRewardPerShare) /
             REWARDS_PRECISION;
         amountOfTokensStaked += _amount;
-        stakeToken.transferFrom(msg.sender, address(this), _amount);
+        _depositTokensToContract(_amount);
         staker.timestamp = block.timestamp;
         emit Deposit(msg.sender, _amount, block.timestamp);
     }
@@ -110,27 +132,35 @@ contract FlexibleStaking is IMYCStakingPool {
      * @notice Allows anyone to withdraw their stake from the contract and harvest their rewards alongside
      * @param _amount The amount to withdraw from the contract
      */
-    function withdraw(uint256 _amount) external {
+    function withdraw(uint256 _amount) external nonReentrant {
         Staker storage staker = stakers[msg.sender];
         require(staker.amount > 0, "balance is zero");
         require(staker.amount >= _amount, "amount > balance");
-        claimRewards();
+        _claimRewards();
         staker.amount -= _amount;
         amountOfTokensStaked -= _amount;
-        staker.rewardDebt = 0;
-        stakeToken.transfer(msg.sender, _amount);
-        staker.timestamp = 0;
+        staker.rewardDebt =
+            (staker.amount * accRewardPerShare) /
+            REWARDS_PRECISION;
+        _withdrawTokensFromContract(msg.sender, _amount);
+        if(staker.amount == 0){
+            staker.timestamp = 0;
+        }
         emit Withdrawal(msg.sender, _amount, block.timestamp);
     }
 
     /**
      * @notice Allows anyone to harvest their staking rewards
      */
-    function claimRewards() public {
+    function claimRewards() public nonReentrant {
+        _claimRewards();
+    }
+
+    function _claimRewards() internal {
         Staker storage staker = stakers[msg.sender];
-        require(staker.amount > 0, "balance is zero");
         //1. Update accRewardPerShare
         updateAccRewardPerShare();
+        if(staker.amount == 0) return;
         //2. Calculate user rewards to harvest
         uint256 rewardsToHarvest = ((staker.amount * accRewardPerShare) /
             REWARDS_PRECISION) - staker.rewardDebt;
@@ -139,15 +169,10 @@ contract FlexibleStaking is IMYCStakingPool {
             (staker.amount * accRewardPerShare) /
             REWARDS_PRECISION;
 
-        rewardsToHarvest += staker.pendingRewards;
-
         if (rewardsToHarvest <= 0) {
             return;
         }
-
-        staker.pendingRewards = 0;
-
-        stakeToken.transfer(msg.sender, rewardsToHarvest);
+        _withdrawTokensFromContract(msg.sender, rewardsToHarvest);
         emit ClaimRewards(msg.sender, rewardsToHarvest, block.timestamp);
     }
 
@@ -179,8 +204,6 @@ contract FlexibleStaking is IMYCStakingPool {
         //2. Calculate user rewards to harvest
         uint256 rewardsToHarvest = ((staker.amount * accRewardPerShareTemp) /
             REWARDS_PRECISION) - staker.rewardDebt;
-
-        rewardsToHarvest += staker.pendingRewards;
 
         if (rewardsToHarvest <= 0) {
             return 0;
@@ -240,6 +263,11 @@ contract FlexibleStaking is IMYCStakingPool {
     function emergencyWithdraw(address _tokenAddress, uint256 _amount) external {
         address owner = IMYCStakingFactory(factory).owner();
         require(msg.sender == owner, "Only protocol owner");
-        IERC20(_tokenAddress).transfer(owner, _amount);
+        // IERC20(_tokenAddress).transfer(owner, _amount);
+        IERC20(_tokenAddress).safeTransfer(owner, _amount);
+    }
+
+    receive() external payable {
+        assert(msg.sender == IMYCStakingFactory(factory).WETH()); // only accept ETH via fallback from the WETH contract
     }
 }

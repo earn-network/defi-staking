@@ -18,6 +18,16 @@ contract MYCStakingManager is Ownable {
         address poolAddress
     );
 
+    /**
+     * @dev Emitted when owner changes treasury to `newTreasury` address
+     */
+    event NewTreasury(address indexed newTreasury);
+
+    /**
+     * @dev Emitted when owner changes signer to `newSigner` address
+     */
+    event NewSigner(address indexed newSigner);
+
     error WrongAddress();
     error OnlyFactories();
     error SignatureAlreadyUsed();
@@ -65,12 +75,6 @@ contract MYCStakingManager is Ownable {
         return _poolAddressBySignature[bytes32(signature)];
     }
 
-    function poolAddressBySignature(
-        bytes32 signature
-    ) external view returns (address) {
-        return _poolAddressBySignature[bytes32(signature)];
-    }
-
     /**
      * @dev Returns MYC treasury address
      */
@@ -107,6 +111,15 @@ contract MYCStakingManager is Ownable {
     }
 
     /**
+     * @dev Returns status of factory
+     * @param factory Factory address
+     * @return status
+     */
+    function factoryStatus(address factory) external view returns(bool){
+        return _factoryStatus[factory];
+    }
+
+    /**
      * @dev Used by approved factories contracts for emiting {AddedStakingPool} events
      * @param poolAddress Staking pool address
      * @param signature Signature used for creating pool
@@ -128,6 +141,7 @@ contract MYCStakingManager is Ownable {
         address newTreasury
     ) external noAddressZero(newTreasury) onlyOwner {
         _treasury = newTreasury;
+        emit NewTreasury(newTreasury);
     }
 
     /**
@@ -138,5 +152,6 @@ contract MYCStakingManager is Ownable {
         address newSigner
     ) external noAddressZero(newSigner) onlyOwner {
         _signer = newSigner;
+        emit NewSigner(newSigner);
     }
 }

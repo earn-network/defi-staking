@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "../IMYCStakingManager.sol";
 import "../IMYCStakingFactory.sol";
+import "../../helpers/Mocks/IWETH.sol";
 
 /// @title Flexible Staking Factory
 /// @notice Creates new FlexibleStaking Contracts
@@ -16,11 +17,14 @@ contract FlexibleStakingFactory is EIP712, IMYCStakingFactory {
     error SignatureMismatch();
 
     IMYCStakingManager internal _mycStakingManager;
+    IWETH internal _WETH;
 
     constructor(
-        IMYCStakingManager mycStakingManager_
+        IMYCStakingManager mycStakingManager_,
+        IWETH weth_
     ) EIP712("MyCointainer", "1") {
         _mycStakingManager = mycStakingManager_;
+        _WETH = weth_;
     }
 
     /**
@@ -29,6 +33,14 @@ contract FlexibleStakingFactory is EIP712, IMYCStakingFactory {
      */
     function mycStakingManager() external view returns (address) {
         return address(_mycStakingManager);
+    }
+
+    /**
+     * @dev Returns WETH address
+     *
+     */
+    function WETH() external view returns (address) {
+        return address(_WETH);
     }
 
     /**
@@ -65,7 +77,7 @@ contract FlexibleStakingFactory is EIP712, IMYCStakingFactory {
         uint256 dateEnd, // end date for all pools
         uint256 deadline,
         bytes memory signature
-    ) external {
+    ) payable external {
         //check pool owner
         if (poolOwner != msg.sender && poolOwner != address(0)) {
             revert WrongExecutor();
@@ -100,22 +112,35 @@ contract FlexibleStakingFactory is EIP712, IMYCStakingFactory {
             salt: bytes32(signature)
         }(tokenAddress, msg.sender, rewardTokensPerSecond, dateStart, dateEnd);
 
-        uint256 tokenAmount = ((dateEnd - dateStart) * rewardTokensPerSecond) +
-            feeForMyc;
+        uint256 tokenAmount = ((dateEnd - dateStart) * rewardTokensPerSecond);
+        uint256 totalTokensRequired = tokenAmount + feeForMyc;
 
-        IERC20(tokenAddress).transferFrom(
-            msg.sender,
-            address(createdPool),
-            tokenAmount
-        );
+        if(address(_WETH) == tokenAddress){
+            require(totalTokensRequired == msg.value, "Native currency amount mismatch");
+            _WETH.deposit{value: msg.value}();
+            _WETH.transfer(address(createdPool),tokenAmount);
+            if(feeForMyc>0){
+                _WETH.transfer(_mycStakingManager.treasury(),feeForMyc);
+            }
+        } 
 
-        if (feeForMyc > 0) {
+        else{
             IERC20(tokenAddress).transferFrom(
                 msg.sender,
-                _mycStakingManager.treasury(),
-                feeForMyc
+                address(createdPool),
+                tokenAmount
             );
+
+            if (feeForMyc > 0) {
+                IERC20(tokenAddress).transferFrom(
+                    msg.sender,
+                    _mycStakingManager.treasury(),
+                    feeForMyc
+                );
+            }
         }
+
+
 
         _mycStakingManager.addStakingPool(
             address(createdPool),

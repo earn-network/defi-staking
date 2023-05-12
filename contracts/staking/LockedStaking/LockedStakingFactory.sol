@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "../IMYCStakingManager.sol";
 import "../IMYCStakingFactory.sol";
+import "../../helpers/Mocks/IWETH.sol";
 
 /// @title Locked Staking Factory
 /// @notice Creates new LockedStaking Contracts
@@ -22,11 +23,22 @@ contract LockedStakingFactory is EIP712, IMYCStakingFactory {
     error WrongExecutor();
 
     IMYCStakingManager internal _mycStakingManager;
+    IWETH internal _WETH;
 
     constructor(
-        IMYCStakingManager mycStakingManager_
+        IMYCStakingManager mycStakingManager_,
+        IWETH weth_
     ) EIP712("MyCointainer", "1") {
         _mycStakingManager = mycStakingManager_;
+        _WETH = weth_;
+    }
+
+    /**
+     * @dev Returns WETH address
+     *
+     */
+    function WETH() external view returns (address) {
+        return address(_WETH);
     }
 
     /**
@@ -35,16 +47,6 @@ contract LockedStakingFactory is EIP712, IMYCStakingFactory {
      */
     function mycStakingManager() external view returns (address) {
         return address(_mycStakingManager);
-    }
-
-    /**
-     * @dev Withdraw reward for `pooAddress`
-     *
-     * @param poolAddress staking pool address
-     */
-    function withdrawMYCSlots(address poolAddress) external {
-        uint256 withdrawn = LockedStaking(poolAddress).claimFee();
-        emit WithdrawnMYCFees(poolAddress, withdrawn);
     }
 
     /**
@@ -84,7 +86,7 @@ contract LockedStakingFactory is EIP712, IMYCStakingFactory {
         uint256 dateEnd, // end date for all pools
         uint256 deadline,
         bytes memory signature
-    ) external {
+    ) external payable{
         //check pool owner
         if (poolOwner != msg.sender && poolOwner != address(0)) {
             revert WrongExecutor();
@@ -99,7 +101,8 @@ contract LockedStakingFactory is EIP712, IMYCStakingFactory {
             durations.length != maxTokensBeStaked.length ||
             maxTokensBeStaked.length != rewardsPool.length ||
             rewardsPool.length != mycFeesPool.length ||
-            durations.length == 0
+            maxStakingAmount.length != mycFeesPool.length ||
+            durations.length == 0 
         ) {
             revert IncompleteArray();
         }
@@ -139,16 +142,37 @@ contract LockedStakingFactory is EIP712, IMYCStakingFactory {
             dateEnd
         );
 
-        uint256 sum = 0;
+        uint256 rewardPoolSum = 0;
+        uint256 mycFeeSum = 0;
         for (uint256 i = 0; i < rewardsPool.length; i++) {
-            sum += (rewardsPool[i] + mycFeesPool[i]);
+            mycFeeSum += mycFeesPool[i];
+            rewardPoolSum += rewardsPool[i];
         }
 
-        IERC20(tokenAddress).transferFrom(
-            msg.sender,
-            address(createdPool),
-            sum
-        );
+        if(address(_WETH) == tokenAddress){
+            require(rewardPoolSum + mycFeeSum == msg.value, "Native currency amount mismatch");
+            _WETH.deposit{value: msg.value}();
+            _WETH.transfer(address(createdPool),rewardPoolSum);
+            if(mycFeeSum>0){
+                _WETH.transfer(_mycStakingManager.treasury(),mycFeeSum);
+            }
+        } 
+
+        else{
+            IERC20(tokenAddress).transferFrom(
+                msg.sender,
+                address(createdPool),
+                rewardPoolSum
+            );
+
+            if (mycFeeSum > 0) {
+                IERC20(tokenAddress).transferFrom(
+                    msg.sender,
+                    _mycStakingManager.treasury(),
+                    mycFeeSum
+                );
+            }
+        }
 
         _mycStakingManager.addStakingPool(
             address(createdPool),

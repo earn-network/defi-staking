@@ -4,6 +4,9 @@ pragma solidity ^0.8.7;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../IMYCStakingFactory.sol";
 import "../IMYCStakingPool.sol";
+import "../../helpers/Mocks/IWETH.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 struct StakingPool {
     address tokenAddress; // staking token address
@@ -31,7 +34,8 @@ struct UserStake {
 
 /// @title Locked Staking by MyCointainer
 /// @notice Stake ERC20 tokens for rewards
-contract LockedStaking is IMYCStakingPool {
+contract LockedStaking is IMYCStakingPool, ReentrancyGuard {
+    using SafeERC20 for IERC20;
     /**
      * @dev Emitted when `staker` stakes tokens for `stakingPlanId`
      */
@@ -80,7 +84,6 @@ contract LockedStaking is IMYCStakingPool {
     mapping(address => mapping(uint256 => UserStake)) internal _userStake;
     StakingPlan[] internal _plans;
     IMYCStakingFactory internal _factory;
-    uint256 internal _withdrawnMYCSlots;
 
     /**
      * @dev Plans length
@@ -192,6 +195,40 @@ contract LockedStaking is IMYCStakingPool {
         if (date < block.timestamp) revert DateInPast();
     }
 
+    function _withdrawTokensFromContract(
+        address[] memory to,
+        uint256[] memory amount
+    ) internal {
+        require(to.length == amount.length, "Length mismatch");
+        IERC20 stakeToken = IERC20(_stakePool.tokenAddress);
+        address wethAddress = IMYCStakingFactory(_factory).WETH();
+        uint256 sum;
+        for (uint256 i = 0; i < to.length; i++) {
+            sum += amount[i];
+        }
+        if (wethAddress == address(stakeToken)) {
+            IWETH(wethAddress).withdraw(sum);
+        }
+        for (uint256 i = 0; i < to.length; i++) {
+            if (wethAddress == address(stakeToken)) {
+                payable(to[i]).transfer(amount[i]);
+            } else {
+                stakeToken.safeTransfer(to[i], amount[i]);
+            }
+        }
+    }
+
+    function _depositTokensToContract(uint256 amount) internal {
+        IERC20 stakeToken = IERC20(_stakePool.tokenAddress);
+        address wethAddress = IMYCStakingFactory(_factory).WETH();
+        if (wethAddress == address(stakeToken)) {
+            require(amount == msg.value, "Native currency mismatch");
+            IWETH(wethAddress).deposit{value: amount}();
+        } else {
+            stakeToken.safeTransferFrom(msg.sender, address(this), amount);
+        }
+    }
+
     function _checkDateInPastOrZero(uint256 date) internal view {
         if (date == 0) {
             return;
@@ -215,7 +252,7 @@ contract LockedStaking is IMYCStakingPool {
     /**
      * @dev Stakes tokens
      */
-    function stake(uint256 amount, uint256 stakingPlanId) external {
+    function stake(uint256 amount, uint256 stakingPlanId) external payable nonReentrant{
         if (amount == 0) {
             revert AmountCantBeZero();
         }
@@ -240,7 +277,7 @@ contract LockedStaking is IMYCStakingPool {
         }
 
         //transfering tokens to smart contract - allowance needed
-        IERC20(sp.tokenAddress).transferFrom(msg.sender, address(this), amount);
+        _depositTokensToContract(amount);
 
         //store stake data for user
         _userStake[msg.sender][stakingPlanId] = UserStake({
@@ -270,7 +307,12 @@ contract LockedStaking is IMYCStakingPool {
     /**
      * @dev Unstakes tokens on selected `poolIndex`
      */
-    function unstake(uint256 stakingPlanId) public {
+    function unstake(uint256 stakingPlanId) external nonReentrant{
+        _unstake(stakingPlanId);
+    }
+
+
+    function _unstake(uint256 stakingPlanId) internal {
         UserStake memory uStake = _userStake[msg.sender][stakingPlanId];
 
         // checking is stake exist
@@ -291,12 +333,13 @@ contract LockedStaking is IMYCStakingPool {
         uint256 rewardToWithdraw = _calculateReward(plan, uStake.amount);
         _plans[stakingPlanId].rewardsWithdrawn += rewardToWithdraw;
 
+        address[] memory addresses = new address[](1);
+        uint256[] memory amounts = new uint256[](1);
+        addresses[0] = msg.sender;
+        amounts[0] = uStake.amount + rewardToWithdraw;
+
         // transfer tokens
-        StakingPool memory sc = _stakePool;
-        IERC20(sc.tokenAddress).transfer(
-            msg.sender,
-            uStake.amount + rewardToWithdraw
-        );
+        _withdrawTokensFromContract(addresses, amounts);
 
         // emit event
         emit Unstaked(
@@ -311,7 +354,7 @@ contract LockedStaking is IMYCStakingPool {
      * @dev Unstakes tokens on selected `poolIndex` before end of staking period
      * Takes 10% fee
      */
-    function unstakeWithPenalty(uint256 stakingPlanId) external {
+    function unstakeWithPenalty(uint256 stakingPlanId) external nonReentrant{
         UserStake memory uStake = _userStake[msg.sender][stakingPlanId];
 
         // checking is stake exist
@@ -320,7 +363,7 @@ contract LockedStaking is IMYCStakingPool {
         // if after locked period - do normal unstake
         StakingPlan memory plan = _plans[stakingPlanId];
         if (uStake.stakeDate + plan.duration < block.timestamp) {
-            unstake(stakingPlanId);
+            _unstake(stakingPlanId);
             return ();
         }
 
@@ -342,9 +385,15 @@ contract LockedStaking is IMYCStakingPool {
             rescuedRewards = _calculateReward(plan, uStake.amount);
             _plans[stakingPlanId].rewardsWithdrawn += rescuedRewards;
         }
-        IERC20(sc.tokenAddress).transfer(sc.owner, feeAmount + rescuedRewards);
-        IERC20(sc.tokenAddress).transfer(_factory.treasury(), feeAmount);
-        IERC20(sc.tokenAddress).transfer(msg.sender, toWithdraw);
+        address[] memory addresses = new address[](3);
+        uint256[] memory amounts = new uint256[](3);
+        addresses[0] = sc.owner;
+        addresses[1] = _factory.treasury();
+        addresses[2] = msg.sender;
+        amounts[0] = feeAmount + rescuedRewards;
+        amounts[1] = feeAmount;
+        amounts[2] = toWithdraw;
+        _withdrawTokensFromContract(addresses, amounts);
         emit UnstakedWithPenalty(
             msg.sender,
             stakingPlanId,
@@ -358,7 +407,7 @@ contract LockedStaking is IMYCStakingPool {
      *
      * Note: Can be used only after stake period end
      */
-    function claimUnusedRewards() external {
+    function claimUnusedRewards() external nonReentrant{
         StakingPool memory sc = _stakePool;
         if (sc.dateEnd >= block.timestamp || sc.dateEnd == 0) {
             revert StakingPeriodNotEnded();
@@ -372,53 +421,36 @@ contract LockedStaking is IMYCStakingPool {
         for (uint256 i = 0; i < _plans.length; i++) {
             StakingPlan memory plan = _plans[i];
             sumToRescue +=
-                (plan.availableTokensBeStaked * plan.rewardsPool) /
+                (plan.availableTokensBeStaked * (plan.rewardsPool)) /
                 plan.maxTokensBeStaked;
         }
         if (sumToRescue == 0) revert NothingToWithdraw();
         _stakePool.rescued = true;
-        IERC20(sc.tokenAddress).transfer(sc.owner, sumToRescue);
+
+        address[] memory addresses = new address[](1);
+        uint256[] memory amounts = new uint256[](1);
+        addresses[0] = sc.owner;
+        amounts[0] = sumToRescue;
+
+        // transfer tokens
+        _withdrawTokensFromContract(addresses, amounts);
     }
 
-    /**
-     * @dev Withdraws collected fees
-     *
-     * Note: Only factory contract can execute this function
-     */
-    function claimFee() external returns (uint256) {
-        if (msg.sender != address(_factory)) {
-            revert OnlyFactory();
-        }
-        StakingPool memory sc = _stakePool;
-        if (sc.dateEnd >= block.timestamp && sc.dateEnd != 0)
-            revert StakingPeriodNotEnded();
-
-        uint256 sumRewards;
-        for (uint256 i = 0; i < _plans.length; i++) {
-            StakingPlan memory plan = _plans[i];
-            sumRewards +=
-                (plan.rewardsWithdrawn * plan.mycFeesPool) /
-                plan.rewardsPool;
-        }
-
-        if (sc.mycFeesWithdrawn >= sumRewards) {
-            revert NothingToWithdraw();
-        }
-
-        uint256 toWithdraw = sumRewards - sc.mycFeesWithdrawn;
-        IERC20(sc.tokenAddress).transfer(_factory.treasury(), toWithdraw);
-        sc.mycFeesWithdrawn += toWithdraw;
-        return (toWithdraw);
-    }
-    
     /**
      * @notice Used to withdraw the amount of tokens from contract to protocol owner address. Unsafe function, please, use only with emergency
      * @param _tokenAddress Token address
      * @param _amount Amount to withdraw
      */
-    function emergencyWithdraw(address _tokenAddress, uint256 _amount) external {
+    function emergencyWithdraw(
+        address _tokenAddress,
+        uint256 _amount
+    ) external {
         address owner = _factory.owner();
         require(msg.sender == owner, "Only protocol owner");
         IERC20(_tokenAddress).transfer(owner, _amount);
+    }
+
+    receive() external payable {
+        assert(msg.sender == IMYCStakingFactory(_factory).WETH()); // only accept ETH via fallback from the WETH contract
     }
 }
