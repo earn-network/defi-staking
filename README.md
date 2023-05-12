@@ -76,7 +76,7 @@ Also `/dev-docs/contracts.json` file will be created which contains all deployed
 
 ### Remix
 
-    To run remix please install `remixd` and open official remix client (https://remix.ethereum.org) and run:
-    ```
-    remixd -s .
-    ```
+  To run remix please install `remixd` and open official remix client  (https://remix.ethereum.org) and run:
+  ```
+  remixd -s .
+  ```
