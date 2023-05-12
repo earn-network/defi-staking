@@ -16,6 +16,7 @@
         "sepolia",
         "staker",
         "stakers",
-        "typechain"
+        "typechain",
+        "WDEL"
     ]
 }
