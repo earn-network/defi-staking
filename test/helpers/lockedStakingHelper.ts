@@ -10,6 +10,7 @@ import {
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { Network } from "@ethersproject/networks";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { WETH } from "../../typechain-types/contracts/helpers/Mocks/WETH.sol";
 
 export type ValueToSignLockedStakingFactory = {
   tokenAddress: string;
@@ -62,14 +63,20 @@ export async function deployLockedStakingFactory(
     mycStakingManager = (await deployMYCStakingManager(treasury, signer))
       .mycStakingManager;
 
+      const WETH = await ethers.getContractFactory(
+        "WETH"
+      );
+      const weth = await WETH.deploy();
+
   const LockedStakingFactory = await ethers.getContractFactory(
     "LockedStakingFactory"
   );
   const lockedStakingFactory = await LockedStakingFactory.deploy(
-    mycStakingManager.address
+    mycStakingManager.address,
+    weth.address
   );
 
-  return { lockedStakingFactory, mycStakingManager };
+  return { lockedStakingFactory, mycStakingManager, weth };
 }
 
 export async function deployERC20Mock() {
@@ -77,7 +84,8 @@ export async function deployERC20Mock() {
   const erc20Mock = await Erc20Mock.deploy(
     "Test token",
     "TEST",
-    ethers.utils.parseEther("100000000")
+    ethers.utils.parseEther("100000000"),
+    18
   );
   return { erc20Mock };
 }
@@ -87,10 +95,10 @@ export async function createLockedStakingFixture(
   signer: string
 ) {
   const { erc20Mock } = await deployERC20Mock();
-  const { lockedStakingFactory, mycStakingManager } =
+  const { lockedStakingFactory, mycStakingManager, weth } =
     await deployLockedStakingFactory(treasury, signer);
   await mycStakingManager.setFactoryStatus(lockedStakingFactory.address, true);
-  return { erc20Mock, lockedStakingFactory, mycStakingManager };
+  return { erc20Mock, lockedStakingFactory, mycStakingManager,weth };
 }
 
 export type LockedStakingFixtureReturn = {
@@ -99,6 +107,7 @@ export type LockedStakingFixtureReturn = {
   mycStakingManager: MYCStakingManager;
   lockedStaking: LockedStaking;
   timestamp: number;
+  weth: WETH
 };
 
 export async function lockedStakingPoolFixture(
@@ -108,7 +117,7 @@ export async function lockedStakingPoolFixture(
   network: Network,
   timestamp: number
 ): Promise<LockedStakingFixtureReturn> {
-  const { erc20Mock, lockedStakingFactory, mycStakingManager } =
+  const { erc20Mock, lockedStakingFactory, mycStakingManager, weth } =
     await createLockedStakingFixture(treasury, signer.address);
   await erc20Mock.transfer(creator.address, ethers.utils.parseEther("1000000"));
   await erc20Mock
@@ -144,6 +153,69 @@ export async function lockedStakingPoolFixture(
     mycStakingManager,
     lockedStaking,
     timestamp,
+    weth
+  };
+}
+
+export async function lockedStakingPoolWithWethFixture(
+  treasury: string,
+  signer: SignerWithAddress,
+  creator: SignerWithAddress,
+  network: Network,
+  timestamp: number
+): Promise<LockedStakingFixtureReturn> {
+  const { erc20Mock, lockedStakingFactory, mycStakingManager, weth } =
+    await createLockedStakingFixture(treasury, signer.address);
+  const [, , , , , bob, alice] = await ethers.getSigners();
+  const { preparedData } = await createSignature(
+    lockedStakingFactory,
+    signer,
+    creator.address,
+    getExampleValueToSign(timestamp + 30, timestamp + 60, timestamp + 100),
+    weth.address,
+    network
+  );
+  const tz = await lockedStakingFactory
+    .connect(creator)
+    .createPool(...preparedData, {value: ethers.utils.parseEther("110")});
+  const lockedStaking = await getNewPool2(tz, mycStakingManager);
+
+  return {
+    erc20Mock,
+    lockedStakingFactory,
+    mycStakingManager,
+    lockedStaking,
+    timestamp,
+    weth
+  };
+}
+
+export async function staked200TokensWithWethFixture(timestamp?: number) {
+  const network = await ethers.provider.getNetwork();
+  let timestampStart = timestamp
+    ? timestamp
+    : Math.floor(new Date().getTime() / 1000);
+  const [, signer, treasury, coinDev, , bob] = await ethers.getSigners();
+  const { erc20Mock, lockedStakingFactory, mycStakingManager, lockedStaking, weth } =
+    await lockedStakingPoolWithWethFixture(
+      treasury.address,
+      signer,
+      coinDev,
+      network,
+      timestampStart
+    );
+  await time.increase(30);
+  await lockedStaking.connect(bob).stake(ethers.utils.parseEther("200"), 0, {value: ethers.utils.parseEther("200")});
+  const stakedAtBlock = await time.latest();
+
+  return {
+    erc20Mock,
+    lockedStakingFactory,
+    mycStakingManager,
+    lockedStaking,
+    timestampStart,
+    stakedAtBlock,
+    weth
   };
 }
 
@@ -262,8 +334,23 @@ export async function getNewPool(
   const receipt = await tz.wait();
   const result = mycStakingManager.interface.decodeEventLog(
     "AddedStakingPool",
-    receipt.logs[2].data,
-    receipt.logs[2].topics
+    receipt.logs[4].data,
+    receipt.logs[4].topics
+  );
+  const LockedStakingF = await ethers.getContractFactory("LockedStaking");
+  const lockedStaking = LockedStakingF.attach(result.poolAddress);
+  return lockedStaking;
+}
+
+export async function getNewPool2(
+  tz: ContractTransaction,
+  mycStakingManager: MYCStakingManager
+): Promise<LockedStaking> {
+  const receipt = await tz.wait();
+  const result = mycStakingManager.interface.decodeEventLog(
+    "AddedStakingPool",
+    receipt.logs[3].data,
+    receipt.logs[3].topics
   );
   const LockedStakingF = await ethers.getContractFactory("LockedStaking");
   const lockedStaking = LockedStakingF.attach(result.poolAddress);

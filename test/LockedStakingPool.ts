@@ -5,6 +5,7 @@ import { Network } from "@ethersproject/networks";
 import {
   lockedStakingPoolFixture,
   staked200TokensFixture,
+  staked200TokensWithWethFixture,
 } from "./helpers/lockedStakingHelper";
 import {
   time,
@@ -586,11 +587,39 @@ describe("LockedStakingPool", function () {
     }
 
     it("Should withdraw tokens to protocol owner", async function () {
-      const { lockedStaking, erc20Mock } =
-        await loadFixture(staked200TokensFixture2);
+      const { lockedStaking, erc20Mock } = await loadFixture(
+        staked200TokensFixture2
+      );
       await expect(
-        lockedStaking.connect(deployer).emergencyWithdraw(erc20Mock.address,ethers.utils.parseEther("100"))
-      ).to.emit(erc20Mock, "Transfer").withArgs(lockedStaking.address, deployer.address, ethers.utils.parseEther("100"));
+        lockedStaking
+          .connect(deployer)
+          .emergencyWithdraw(erc20Mock.address, ethers.utils.parseEther("100"))
+      )
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          lockedStaking.address,
+          deployer.address,
+          ethers.utils.parseEther("100")
+        );
     });
   });
+
+  describe("Native currency", function() {
+    describe("Normal unstake", function () {
+      async function staked200TokensFixture2() {
+        const timestampStart = (await time.latest()) - 21;
+        return staked200TokensWithWethFixture(timestampStart);
+      }
+
+      it("Should transfer tokens to user address (reward + staked)", async function () {
+        const { lockedStaking, erc20Mock, stakedAtBlock, } = await loadFixture(
+          staked200TokensFixture2
+        );
+        await time.setNextBlockTimestamp(stakedAtBlock + 21);
+        console.log((await bob.getBalance()).toString());
+        await lockedStaking.connect(bob).unstake(0);
+        console.log((await bob.getBalance()).toString());
+      });
+    });
+  })
 });

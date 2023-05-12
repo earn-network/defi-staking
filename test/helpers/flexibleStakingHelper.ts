@@ -10,6 +10,7 @@ import {
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { Network } from "@ethersproject/networks";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { WETH } from "../../typechain-types/contracts/helpers/Mocks/WETH.sol";
 
 export type ValueToSignFlexibleStakingFactory = {
   tokenAddress: string;
@@ -56,14 +57,20 @@ export async function deployFlexibleStakingFactory(
     mycStakingManager = (await deployMYCStakingManager(treasury, signer))
       .mycStakingManager;
 
+  const WETH = await ethers.getContractFactory(
+    "WETH"
+  );
+  const weth = await WETH.deploy();
+
   const FlexibleStakingFactory = await ethers.getContractFactory(
     "FlexibleStakingFactory"
   );
   const flexibleStakingFactory = await FlexibleStakingFactory.deploy(
-    mycStakingManager.address
+    mycStakingManager.address,
+    weth.address
   );
 
-  return { flexibleStakingFactory, mycStakingManager };
+  return { flexibleStakingFactory, mycStakingManager, weth };
 }
 
 export async function deployERC20Mock() {
@@ -71,7 +78,8 @@ export async function deployERC20Mock() {
   const erc20Mock = await Erc20Mock.deploy(
     "Test token",
     "TEST",
-    ethers.utils.parseEther("100000000")
+    ethers.utils.parseEther("100000000"),
+    18
   );
   return { erc20Mock };
 }
@@ -81,13 +89,13 @@ export async function createFlexibleStakingFixture(
   signer: string
 ) {
   const { erc20Mock } = await deployERC20Mock();
-  const { flexibleStakingFactory, mycStakingManager } =
+  const { flexibleStakingFactory, mycStakingManager, weth } =
     await deployFlexibleStakingFactory(treasury, signer);
   await mycStakingManager.setFactoryStatus(
     flexibleStakingFactory.address,
     true
   );
-  return { erc20Mock, flexibleStakingFactory, mycStakingManager };
+  return { erc20Mock, flexibleStakingFactory, mycStakingManager, weth };
 }
 
 export type FlexibleStakingFixtureReturn = {
@@ -96,6 +104,8 @@ export type FlexibleStakingFixtureReturn = {
   mycStakingManager: MYCStakingManager;
   flexibleStaking: FlexibleStaking;
   timestamp: number;
+  creationTz: ContractTransaction,
+  weth: WETH
 };
 
 export async function flexibleStakingPoolFixture(
@@ -105,7 +115,7 @@ export async function flexibleStakingPoolFixture(
   network: Network,
   timestamp: number
 ): Promise<FlexibleStakingFixtureReturn> {
-  const { erc20Mock, flexibleStakingFactory, mycStakingManager } =
+  const { erc20Mock, flexibleStakingFactory, mycStakingManager, weth } =
     await createFlexibleStakingFixture(treasury, signer.address);
   await erc20Mock.transfer(creator.address, ethers.utils.parseEther("1000000"));
   await erc20Mock
@@ -144,6 +154,77 @@ export async function flexibleStakingPoolFixture(
     mycStakingManager,
     flexibleStaking,
     timestamp,
+    creationTz: tz,
+    weth
+  };
+}
+
+export async function flexibleStakingPoolFixtureWithWeth(
+  treasury: string,
+  signer: SignerWithAddress,
+  creator: SignerWithAddress,
+  network: Network,
+  timestamp: number
+): Promise<FlexibleStakingFixtureReturn> {
+  const { erc20Mock, flexibleStakingFactory, mycStakingManager, weth } =
+    await createFlexibleStakingFixture(treasury, signer.address);
+  const [, , , , , bob, alice] = await ethers.getSigners();
+  const { preparedData, signedValue } = await createSignature(
+    flexibleStakingFactory,
+    signer,
+    creator.address,
+    getExampleValueToSign(timestamp + 30, timestamp + 60, timestamp + 100),
+    weth.address,
+    network
+  );
+  const totalTokens = signedValue.rewardTokensPerSecond.mul(BigNumber.from(signedValue.dateEnd-signedValue.dateStart)).add(signedValue.feeForMyc);
+  const tz = await flexibleStakingFactory
+    .connect(creator)
+    .createPool(...preparedData, {value: totalTokens});
+  const flexibleStaking = await getNewPool2(tz, mycStakingManager);
+
+  return {
+    erc20Mock,
+    flexibleStakingFactory,
+    mycStakingManager,
+    flexibleStaking,
+    timestamp,
+    creationTz: tz,
+    weth
+  };
+}
+
+export async function staked200TokensWithWethFixture(timestamp?: number) {
+  const network = await ethers.provider.getNetwork();
+  let timestampStart = timestamp
+    ? timestamp
+    : Math.floor(new Date().getTime() / 1000);
+  const [, signer, treasury, coinDev, , bob] = await ethers.getSigners();
+  const {
+    erc20Mock,
+    flexibleStakingFactory,
+    mycStakingManager,
+    flexibleStaking,
+    weth
+  } = await flexibleStakingPoolFixtureWithWeth(
+    treasury.address,
+    signer,
+    coinDev,
+    network,
+    timestampStart
+  );
+  await time.increase(30);
+  await flexibleStaking.connect(bob).deposit(ethers.utils.parseEther("200"), { value: ethers.utils.parseEther("200") });
+  const stakedAtBlock = await time.latest();
+
+  return {
+    erc20Mock,
+    flexibleStakingFactory,
+    mycStakingManager,
+    flexibleStaking,
+    timestampStart,
+    stakedAtBlock,
+    weth
   };
 }
 
@@ -261,6 +342,21 @@ export async function getNewPool(
     "AddedStakingPool",
     receipt.logs[4].data,
     receipt.logs[4].topics
+  );
+  const FlexibleStakingF = await ethers.getContractFactory("FlexibleStaking");
+  const flexibleStaking = FlexibleStakingF.attach(result.poolAddress);
+  return flexibleStaking;
+}
+
+export async function getNewPool2(
+  tz: ContractTransaction,
+  mycStakingManager: MYCStakingManager
+): Promise<FlexibleStaking> {
+  const receipt = await tz.wait();
+  const result = mycStakingManager.interface.decodeEventLog(
+    "AddedStakingPool",
+    receipt.logs[3].data,
+    receipt.logs[3].topics
   );
   const FlexibleStakingF = await ethers.getContractFactory("FlexibleStaking");
   const flexibleStaking = FlexibleStakingF.attach(result.poolAddress);

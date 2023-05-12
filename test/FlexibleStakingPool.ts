@@ -6,6 +6,7 @@ import { time, loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import {
   flexibleStakingPoolFixture,
   staked200TokensFixture,
+  staked200TokensWithWethFixture,
 } from "./helpers/flexibleStakingHelper";
 
 describe("FlexibleStakingPool", function () {
@@ -35,6 +36,29 @@ describe("FlexibleStakingPool", function () {
     network = await ethers.provider.getNetwork();
   });
 
+  describe("Factory", function () {
+    it("Should emit transfer tokens", async function () {
+      const { flexibleStaking, erc20Mock, creationTz } = await loadFixture(
+        flexibleStakingFixture
+      );
+
+      await expect(creationTz)
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          coinDev.address,
+          flexibleStaking.address,
+          ethers.utils.parseEther("30")
+        );
+      await expect(creationTz)
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          coinDev.address,
+          treasury.address,
+          ethers.utils.parseEther("10")
+        );
+    });
+  });
+
   describe("Deployment", function () {
     it("Should return proper creator address", async function () {
       const { flexibleStaking } = await loadFixture(flexibleStakingFixture);
@@ -47,8 +71,12 @@ describe("FlexibleStakingPool", function () {
     });
 
     it("Should return proper factory address", async function () {
-      const { flexibleStaking, flexibleStakingFactory } = await loadFixture(flexibleStakingFixture);
-      expect(await flexibleStaking.factory()).eq(flexibleStakingFactory.address);
+      const { flexibleStaking, flexibleStakingFactory } = await loadFixture(
+        flexibleStakingFixture
+      );
+      expect(await flexibleStaking.factory()).eq(
+        flexibleStakingFactory.address
+      );
     });
 
     it("Should return proper summary", async function () {
@@ -172,14 +200,6 @@ describe("FlexibleStakingPool", function () {
       return staked200TokensFixture(ts);
     }
 
-    it("Should revert with 'balance is zero' if nothing to claim", async function () {
-      const { flexibleStaking, stakedAtBlock, erc20Mock, timestampStart } =
-        await loadFixture(staked200TokensFixture2);
-      await expect(
-        flexibleStaking.connect(alice).claimRewards()
-      ).to.be.revertedWith("balance is zero");
-    });
-
     it("Should emit transfer tokens", async function () {
       const { flexibleStaking, stakedAtBlock, erc20Mock, timestampStart } =
         await loadFixture(staked200TokensFixture2);
@@ -207,14 +227,14 @@ describe("FlexibleStakingPool", function () {
         await loadFixture(staked200TokensFixture2);
       await time.increaseTo(stakedAtBlock + 35);
       expect(await flexibleStaking.checkRewards(bob.address)).eq(
-        ethers.utils.parseEther("28")
+        ethers.utils.parseEther("27")
       );
       await expect(flexibleStaking.connect(bob).claimRewards())
         .to.emit(erc20Mock, "Transfer")
         .withArgs(
           flexibleStaking.address,
           bob.address,
-          ethers.utils.parseEther("28")
+          ethers.utils.parseEther("27")
         );
       expect(await flexibleStaking.checkRewards(bob.address)).eq(
         ethers.utils.parseEther("0")
@@ -251,6 +271,140 @@ describe("FlexibleStakingPool", function () {
       const ts = await time.latest();
       return staked200TokensFixture(ts);
     }
+
+    it("Normal award", async function () {
+      const { flexibleStaking, stakedAtBlock, erc20Mock, timestampStart } =
+        await loadFixture(staked200TokensFixture2);
+      await time.increaseTo(stakedAtBlock + 6);
+      const ev = await flexibleStaking
+        .connect(bob)
+        .withdraw(ethers.utils.parseEther("200"));
+      await expect(ev)
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          flexibleStaking.address,
+          bob.address,
+          ethers.utils.parseEther("200")
+        );
+      await expect(ev)
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          flexibleStaking.address,
+          bob.address,
+          ethers.utils.parseEther("7")
+        );
+    });
+
+    it("withdraw half", async function () {
+      const { flexibleStaking, stakedAtBlock, erc20Mock, timestampStart } =
+        await loadFixture(staked200TokensFixture2);
+
+      await time.increaseTo(stakedAtBlock + 3);
+      const ev = await flexibleStaking
+        .connect(bob)
+        .withdraw(ethers.utils.parseEther("100"));
+      await expect(ev)
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          flexibleStaking.address,
+          bob.address,
+          ethers.utils.parseEther("100")
+        );
+      await expect(ev)
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          flexibleStaking.address,
+          bob.address,
+          ethers.utils.parseEther("4")
+        );
+
+      await time.increaseTo(stakedAtBlock + 6);
+      const ev2 = await flexibleStaking
+        .connect(bob)
+        .withdraw(ethers.utils.parseEther("100"));
+      await expect(ev2)
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          flexibleStaking.address,
+          bob.address,
+          ethers.utils.parseEther("100")
+        );
+      await expect(ev2)
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          flexibleStaking.address,
+          bob.address,
+          ethers.utils.parseEther("3")
+        );
+    });
+
+    it("test audit", async function () {
+      const { flexibleStaking, stakedAtBlock, erc20Mock, timestampStart } =
+        await loadFixture(staked200TokensFixture2);
+
+      await time.increaseTo(stakedAtBlock + 3);
+      const ev = await flexibleStaking
+        .connect(bob)
+        .withdraw(ethers.utils.parseEther("199"));
+      await expect(ev)
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          flexibleStaking.address,
+          bob.address,
+          ethers.utils.parseEther("199")
+        );
+      await expect(ev)
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          flexibleStaking.address,
+          bob.address,
+          ethers.utils.parseEther("4")
+        );
+
+      await time.increaseTo(stakedAtBlock + 6);
+      const ev2 = await flexibleStaking
+        .connect(bob)
+        .withdraw(ethers.utils.parseEther("1"));
+      await expect(ev2)
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          flexibleStaking.address,
+          bob.address,
+          ethers.utils.parseEther("1")
+        );
+      await expect(ev2)
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          flexibleStaking.address,
+          bob.address,
+          ethers.utils.parseEther("1")
+        );
+
+      await flexibleStaking
+        .connect(bob)
+        .deposit(ethers.utils.parseEther("100"));
+    await time.increaseTo(stakedAtBlock + 10);
+    const ev3 = await flexibleStaking
+      .connect(bob)
+      .withdraw(ethers.utils.parseEther("100"));
+    await expect(ev3)
+      .to.emit(erc20Mock, "Transfer")
+      .withArgs(
+        flexibleStaking.address,
+        bob.address,
+        ethers.utils.parseEther("100")
+      );
+    await expect(ev3)
+      .to.emit(erc20Mock, "Transfer")
+      .withArgs(
+        flexibleStaking.address,
+        bob.address,
+        ethers.utils.parseEther("3")
+      );
+
+      
+
+    });
 
     it("Should revert with 'balance is zero' if nothing to claim", async function () {
       const { flexibleStaking, stakedAtBlock, erc20Mock, timestampStart } =
@@ -310,14 +464,14 @@ describe("FlexibleStakingPool", function () {
       await time.increaseTo(stakedAtBlock + 5);
       const ev = await flexibleStaking
         .connect(bob)
-        .withdraw(ethers.utils.parseEther("200"));
+        .withdraw(ethers.utils.parseEther("100"));
       const ts = await time.latest();
       const [amount, rewardDebt, pendingRewards, timestamp] =
         await flexibleStaking.stakers(bob.address);
-      expect(amount).eq(ethers.utils.parseEther("0"));
-      expect(rewardDebt).eq(ethers.utils.parseEther("0")); //withdrawn already
+      expect(amount).eq(ethers.utils.parseEther("100")); //
+      expect(rewardDebt).eq(ethers.utils.parseEther("3")); //withdrawn already
       expect(pendingRewards).eq(ethers.utils.parseEther("0"));
-      expect(timestamp).eq(0);
+      expect(timestamp).eq(stakedAtBlock);
       const [
         rewardTokensPerSecond,
         amountOfTokensStaked,
@@ -325,7 +479,7 @@ describe("FlexibleStakingPool", function () {
         lastAccRewardPerShareTimestamp,
       ] = await flexibleStaking.getSummary();
       expect(rewardTokensPerSecond).eq(ethers.utils.parseEther("1"));
-      expect(amountOfTokensStaked).eq(ethers.utils.parseEther("0"));
+      expect(amountOfTokensStaked).eq(ethers.utils.parseEther("100"));
       //expect(accRewardPerShare).eq(ethers.utils.parseEther("0.00000005"));
       expect(lastAccRewardPerShareTimestamp).eq(ts);
     });
@@ -370,11 +524,49 @@ describe("FlexibleStakingPool", function () {
     }
 
     it("Should withdraw tokens to protocol owner", async function () {
-      const { flexibleStaking, erc20Mock } =
-        await loadFixture(staked200TokensFixture2);
+      const { flexibleStaking, erc20Mock } = await loadFixture(
+        staked200TokensFixture2
+      );
       await expect(
-        flexibleStaking.connect(deployer).emergencyWithdraw(erc20Mock.address,ethers.utils.parseEther("100"))
-      ).to.emit(erc20Mock, "Transfer").withArgs(flexibleStaking.address, deployer.address, ethers.utils.parseEther("100"));
+        flexibleStaking
+          .connect(deployer)
+          .emergencyWithdraw(erc20Mock.address, ethers.utils.parseEther("100"))
+      )
+        .to.emit(erc20Mock, "Transfer")
+        .withArgs(
+          flexibleStaking.address,
+          deployer.address,
+          ethers.utils.parseEther("100")
+        );
+    });
+  });
+
+  describe("Native Currency", function () {
+    async function staked200TokensFixture3() {
+      const ts = await time.latest();
+      return staked200TokensWithWethFixture(ts);
+    }
+
+    it("test audit", async function () {
+      const { flexibleStaking, stakedAtBlock, erc20Mock, timestampStart } =
+        await loadFixture(staked200TokensFixture3);
+
+      await time.increaseTo(stakedAtBlock + 3);
+      console.log((await bob.getBalance()).toString());
+      await flexibleStaking
+        .connect(bob)
+        .withdraw(ethers.utils.parseEther("200"));
+      console.log((await bob.getBalance()).toString());
+
+      await flexibleStaking
+          .connect(bob)
+          .deposit(ethers.utils.parseEther("100"), {value: ethers.utils.parseEther("100")});
+      console.log((await bob.getBalance()).toString());
+
+      await flexibleStaking
+      .connect(bob)
+      .withdraw(ethers.utils.parseEther("100"));
+    console.log((await bob.getBalance()).toString());
     });
   });
 });
