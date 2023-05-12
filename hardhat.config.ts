@@ -20,6 +20,15 @@ const config: HardhatUserConfig = {
           },
         },
       },
+      {
+        version: "0.4.18",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+        },
+      },
     ],
   },
   namedAccounts: {
@@ -78,6 +87,26 @@ const config: HardhatUserConfig = {
     mainnet: {
       url: process.env.MAINNET_URL || "",
       chainId: 1,
+      accounts: {
+        mnemonic: process.env.MNEMONIC_MAINNET
+          ? process.env.MNEMONIC_MAINNET
+          : "",
+      },
+      saveDeployments: true,
+      deploy: ["deploy/bsc/"],
+    },
+    decimalTestnet: {
+      url: process.env.DECIMAL_TEST_URL || "",
+      accounts: {
+        mnemonic: process.env.MNEMONIC_TESTNET
+          ? process.env.MNEMONIC_TESTNET
+          : "",
+      },
+      saveDeployments: true,
+      deploy: ["deploy/bsc/"],
+    },
+    decimal: {
+      url: process.env.DECIMAL_URL || "",
       accounts: {
         mnemonic: process.env.MNEMONIC_MAINNET
           ? process.env.MNEMONIC_MAINNET
