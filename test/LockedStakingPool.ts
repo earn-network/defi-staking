@@ -13,6 +13,7 @@ import {
   takeSnapshot,
   SnapshotRestorer,
 } from "@nomicfoundation/hardhat-network-helpers";
+import { AttackContract } from "../typechain-types";
 
 describe("LockedStakingPool", function () {
   let signer: SignerWithAddress;

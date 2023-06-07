@@ -8,6 +8,7 @@ import {
   staked200TokensFixture,
   staked200TokensWithWethFixture,
 } from "./helpers/flexibleStakingHelper";
+import { AttackContract } from "../typechain-types";
 
 describe("FlexibleStakingPool", function () {
   let signer: SignerWithAddress;
@@ -569,4 +570,43 @@ describe("FlexibleStakingPool", function () {
     console.log((await bob.getBalance()).toString());
     });
   });
+
+  describe("Attack scenario", function() {
+    describe("Do in one transaction", function () {
+      let attackContract: AttackContract;
+      before(async() => {
+        const AttackContractFactory = await ethers.getContractFactory(
+          "AttackContract"
+        );
+        attackContract = await AttackContractFactory.deploy(
+        );
+      })
+
+      async function staked200TokensFixture2() {
+        const timestampStart = (await time.latest()) - 21;
+        return staked200TokensFixture(timestampStart);
+      }
+
+      it("Should unstake same amount as staked", async function () {
+        const { flexibleStaking, erc20Mock, stakedAtBlock, } = await loadFixture(
+          staked200TokensFixture2
+        );
+        await erc20Mock.connect(bob).approve(attackContract.address, ethers.utils.parseEther("200"));
+
+        expect(await erc20Mock.balanceOf(bob.address)).eq(ethers.utils.parseEther("999800"));
+        await attackContract.connect(bob).attack(erc20Mock.address, flexibleStaking.address, ethers.utils.parseEther("100"));
+        expect(await erc20Mock.balanceOf(bob.address)).eq(ethers.utils.parseEther("999800"));
+
+        await flexibleStaking.connect(bob).withdraw(ethers.utils.parseEther("200"));
+        expect(await erc20Mock.balanceOf(bob.address)).eq(ethers.utils.parseEther("1000003"));
+        await flexibleStaking.connect(bob).deposit(ethers.utils.parseEther("50"));
+        await flexibleStaking.connect(bob).deposit(ethers.utils.parseEther("150"));
+        await flexibleStaking.connect(bob).claimRewards();
+        await flexibleStaking.connect(bob).withdraw(ethers.utils.parseEther("150"));
+        await flexibleStaking.connect(bob).withdraw(ethers.utils.parseEther("50"));
+        await flexibleStaking.connect(bob).claimRewards();
+        expect(await erc20Mock.balanceOf(bob.address)).eq(ethers.utils.parseEther("1000005"));
+      });
+    });
+  })
 });
