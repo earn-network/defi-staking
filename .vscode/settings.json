@@ -17,6 +17,7 @@
         "staker",
         "stakers",
         "typechain",
+        "unstake",
         "WDEL"
     ]
 }
