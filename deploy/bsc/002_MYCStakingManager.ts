@@ -10,7 +10,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   let mainOwner:string = deployer;
 
   // mainnet
-  if(chainId === "56"){
+  if(chainId === "56" || chainId === "75" || chainId === "1"){
     signer = process.env.SIGNER_MAINNET || "";
     treasury = process.env.TREASURY_MAINNET || "";
   }
