@@ -1,82 +1,14 @@
-# Earn network smart contracts
+# Get Started
+Learn how your project can benefit by collaborating with the Earn Network.
 
----
+## **Overview**
 
-# Getting started
+By offering DeFi Staking solutions, the Earn Network empowers projects and their communities to actively participate in the growth and adoption of their tokens. Through its user-friendly platform and customizable staking options, the Earn Network is poised to become a leading provider of staking solutions in the decentralized finance space.
 
-#### 1. Installation:
+![](https://1334155380-files.gitbook.io/~/files/v0/b/gitbook-x-prod.appspot.com/o/spaces%2FJCo5cC0knuR3kvJy5ewQ%2Fuploads%2FwAzFwh0umPtoW1LQ2IoO%2F11111.png?alt=media&token=79aee284-e0b1-4a48-95cb-a25a2949e584)
 
-```
-npm i
-```
+[Benefits for Projects](001-Benefits-For-Projects.md)
 
-#### 2. Create `.env` file based on `.env.example` . Enter your developer purposes mnemonic phrase(12 words).
-#### 3. Compile and Tests
+[Staking Implementation](002-Staking-implementation.md)
 
-```
-npm run compile
-```
-
-```
-npm run test
-```
-
-#### 4. Generate Documentation
-
-To create documentation in .md format run
-```
-npm run docgen
-```
-
-Documentation files will appear in the `/docs` folder
-
---------
-
-To create documentation as webpage run
-```
-npm run devdoc
-```
-
-Documentation files will appear in the `/dev-docs` folder, open `index.html` in a browser to read it.
-
-Also `/dev-docs/contracts.json` file will be created which contains all deployed contract information (addresses, abis, etc);
-
-#### 5. Local migrations/local deployment
-
-   Run local node:
-
-   ```
-   npm run node
-   ```
-
-   It will run local virtual node and deploy contracts
-
-#### 6. Testnet/production deployment
-
-   Make sure that first account (id[0]) for selected mnemonic has a native currency on selected network. Use a faucets for a testnets.
-
-   Testnet deployment:
-   ```
-   npm run testnet
-   ```
-
-   Production deployment (using MNEMONIC_MAINNET)
-   ```
-   npm run mainnet
-   ```
-
-   Deployment info will store on deployments folder
-
-#### 7. Verifying on bscscan
-
-   To verify contracts on bsc run: 
-   ```
-   npm run verify
-   ```
-
-### Remix
-
-  To run remix please install `remixd` and open official remix client  (https://remix.ethereum.org) and run:
-  ```
-  remixd -s .
-  ```
+[Documentation](003-Documentation.md)
