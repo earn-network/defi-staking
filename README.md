@@ -12,3 +12,5 @@ By offering DeFi Staking solutions, the Earn Network empowers projects and their
 [Staking Implementation](002-Staking-implementation.md)
 
 [Documentation](003-Documentation.md)
+
+[Smart Contract Audit](https://beosin.com/audits/Earn-Network_202305161600.pdf)
